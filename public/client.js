@@ -8,8 +8,13 @@ const localIpValue = document.getElementById('localIpValue');
 const localPortValue = document.getElementById('localPortValue');
 const localUrlValue = document.getElementById('localUrlValue');
 const copyUrlBtn = document.getElementById('copyUrlBtn');
+const toggleQrBtn = document.getElementById('toggleQrBtn');
+const qrContainer = document.getElementById('qrContainer');
+const qrImage = document.getElementById('qrImage');
+const qrStatus = document.getElementById('qrStatus');
 const nameForm = document.getElementById('nameForm');
 const playerNameInput = document.getElementById('playerNameInput');
+const focusModeBtn = document.getElementById('focusModeBtn');
 const muteBtn = document.getElementById('muteBtn');
 const jumpBtn = document.getElementById('jumpBtn');
 const duckBtn = document.getElementById('duckBtn');
@@ -44,6 +49,7 @@ let currentState = {
 // Controle local de áudio retrô via Web Audio API
 let audioCtx = null;
 let isMuted = false;
+let hideOtherPlayers = false;
 let prevAlive = true;
 let prevJumping = false;
 let lastMilestone = 0;
@@ -150,6 +156,35 @@ socket.on('disconnect', () => {
     connectionStatus.className = 'status-pill offline';
 });
 
+function updateQrCode() {
+    if (!localNetworkUrl || qrContainer.classList.contains('hidden')) return;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=6&data=${encodeURIComponent(localNetworkUrl)}`;
+    if (qrImage.src !== qrUrl) {
+        qrImage.style.display = 'block';
+        qrStatus.textContent = 'Escaneie no celular na mesma rede Wi-Fi';
+        qrImage.src = qrUrl;
+    }
+}
+
+qrImage.addEventListener('error', () => {
+    qrImage.style.display = 'none';
+    qrStatus.textContent = 'QR Code indisponível sem internet. Use o IP acima.';
+});
+
+toggleQrBtn.addEventListener('click', () => {
+    const isHidden = qrContainer.classList.toggle('hidden');
+    toggleQrBtn.textContent = isHidden ? 'QR Code' : 'Ocultar QR';
+    if (!isHidden) {
+        updateQrCode();
+    }
+});
+
+focusModeBtn.addEventListener('click', () => {
+    hideOtherPlayers = !hideOtherPlayers;
+    focusModeBtn.textContent = hideOtherPlayers ? '🎯 Só eu' : '👀 Todos';
+    focusModeBtn.classList.toggle('active', hideOtherPlayers);
+});
+
 function updateNetworkInfo(network) {
     if (!network || !network.ip) return;
     const port = network.port || 3000;
@@ -157,6 +192,7 @@ function updateNetworkInfo(network) {
     localPortValue.textContent = `Porta: ${port}`;
     localNetworkUrl = network.url || `http://${network.ip}:${port}`;
     localUrlValue.textContent = localNetworkUrl;
+    updateQrCode();
 }
 
 fetch('/api/network')
@@ -719,13 +755,15 @@ function render() {
         }
     });
 
-    // Desenha outros jogadores primeiro e o jogador local por cima
-    const players = Object.values(currentState.players);
-    players.forEach((player) => {
-        if (player.id !== myId) {
-            drawDino(player, false, currentState.tick, fgColor, eyeColor);
-        }
-    });
+    // Desenha outros jogadores primeiro (se o modo foco não estiver ativo) e o jogador local por cima
+    if (!hideOtherPlayers) {
+        const players = Object.values(currentState.players);
+        players.forEach((player) => {
+            if (player.id !== myId) {
+                drawDino(player, false, currentState.tick, fgColor, eyeColor);
+            }
+        });
+    }
 
     const me = myId ? currentState.players[myId] : null;
     if (me) {

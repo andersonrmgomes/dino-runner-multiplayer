@@ -113,6 +113,8 @@ npm install
 npm start
 ```
 
+> **Modo desenvolvimento (com reinício automático):** durante os exercícios/alterações no `server.js`, use `npm run dev` (`node --watch server.js`) para o servidor reiniciar sozinho toda vez que você salvar o arquivo.
+
 No terminal, aparecerão os endereços de acesso:
 ```text
 Servidor Dino Multiplayer rodando em:
@@ -122,7 +124,8 @@ Servidor Dino Multiplayer rodando em:
 
 ### 4. Jogue sozinho ou em grupo na sala de aula
 - **No mesmo computador:** abra `http://localhost:3000` em duas ou mais abas para testar o multiplayer.
-- **Com colegas na mesma rede Wi-Fi / laboratório:** olhe o card **IP Local e Porta** no painel lateral do jogo, clique em **Copiar** e compartilhe o endereço (`http://SEU-IP:3000`) para outros computadores ou celulares entrarem na mesma corrida!
+- **Com colegas na mesma rede Wi-Fi / laboratório:** olhe o card **IP Local e Porta** no painel lateral do jogo, clique em **Copiar** para enviar o link (`http://SEU-IP:3000`) ou clique em **QR Code** para os colegas escanearem direto pelo celular!
+- **Turma grande na mesma sala:** use o botão **👀 Todos / 🎯 Só eu** no topo da tela para ocultar os outros dinossauros da pista (modo foco) sem sair do placar multiplayer.
 
 > **Dica de laboratório (Windows):** se outro computador da rede não conseguir abrir o endereço `http://SEU-IP:3000`, verifique se o **Firewall do Windows** permitiu o acesso do **Node.js** em redes privadas.
 

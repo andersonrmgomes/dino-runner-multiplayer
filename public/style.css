@@ -92,6 +92,13 @@ body {
     background-color: #45475a;
 }
 
+.icon-btn.active {
+    background-color: #89b4fa;
+    color: #11111b;
+    border-color: #89b4fa;
+    font-weight: 700;
+}
+
 .canvas-wrapper {
     width: 100%;
     border-radius: 10px;
@@ -204,6 +211,40 @@ canvas {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 6px;
+}
+
+.network-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.qr-container {
+    margin-top: 8px;
+    padding: 10px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.qr-container.hidden {
+    display: none;
+}
+
+#qrImage {
+    display: block;
+    width: 160px;
+    height: 160px;
+    image-rendering: pixelated;
+}
+
+.qr-hint {
+    font-size: 0.72rem;
+    color: #313244;
+    text-align: center;
 }
 
 #localIpValue {

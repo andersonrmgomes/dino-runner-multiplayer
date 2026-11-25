@@ -20,6 +20,9 @@
 
                 <div class="header-actions">
                     <span id="connectionStatus" class="status-pill">Conectando...</span>
+                    <button id="focusModeBtn" type="button" class="icon-btn" title="Alternar visibilidade dos outros jogadores na pista">
+                        👀 Todos
+                    </button>
                     <button id="muteBtn" type="button" class="icon-btn" title="Ativar ou silenciar som">
                         🔊 Som
                     </button>
@@ -52,13 +55,22 @@
             <div class="network-box">
                 <div class="network-header">
                     <span class="record-label">IP Local e Porta</span>
-                    <button id="copyUrlBtn" type="button" class="copy-btn" title="Copiar endereço da rede">
-                        Copiar
-                    </button>
+                    <div class="network-actions">
+                        <button id="toggleQrBtn" type="button" class="copy-btn" title="Exibir ou ocultar QR Code">
+                            QR Code
+                        </button>
+                        <button id="copyUrlBtn" type="button" class="copy-btn" title="Copiar endereço da rede">
+                            Copiar
+                        </button>
+                    </div>
                 </div>
                 <strong id="localIpValue">Detectando...</strong>
                 <span id="localPortValue" class="network-port">Porta: --</span>
                 <span id="localUrlValue" class="network-url"></span>
+                <div id="qrContainer" class="qr-container hidden">
+                    <img id="qrImage" alt="QR Code para acessar o jogo na rede local" width="160" height="160">
+                    <span id="qrStatus" class="qr-hint">Escaneie no celular na mesma rede Wi-Fi</span>
+                </div>
             </div>
 
             <form id="nameForm" class="name-form">
