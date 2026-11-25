@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Runner Multiplayer - Socket.io</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <main class="game-area">
+            <header class="game-header">
+                <div>
+                    <h1>Dino Runner Multiplayer</h1>
+                    <p class="subtitle">Sobreviva no deserto com seus amigos em tempo real</p>
+                </div>
+
+                <div class="header-actions">
+                    <span id="connectionStatus" class="status-pill">Conectando...</span>
+                    <button id="muteBtn" type="button" class="icon-btn" title="Ativar ou silenciar som">
+                        🔊 Som
+                    </button>
+                </div>
+            </header>
+
+            <div class="canvas-wrapper">
+                <canvas id="gameCanvas" width="900" height="300"></canvas>
+            </div>
+
+            <div class="controls-bar">
+                <p class="controls">
+                    <strong>Espaço / ↑ / W</strong> Pular &nbsp;|&nbsp;
+                    <strong>↓ / S</strong> Abaixar (ou queda rápida no ar)
+                </p>
+
+                <div class="touch-controls">
+                    <button id="jumpBtn" type="button" class="action-btn">⬆ Pular</button>
+                    <button id="duckBtn" type="button" class="action-btn secondary">⬇ Abaixar</button>
+                </div>
+            </div>
+        </main>
+
+        <aside class="scoreboard">
+            <div class="record-box">
+                <span class="record-label">Recorde da Sala</span>
+                <strong id="highScoreValue">00000</strong>
+            </div>
+
+            <form id="nameForm" class="name-form">
+                <label for="playerNameInput">Seu Apelido</label>
+                <div class="name-input-group">
+                    <input id="playerNameInput" type="text" maxlength="14" placeholder="Ex: T-Rex" autocomplete="off">
+                    <button id="saveNameBtn" type="submit">OK</button>
+                </div>
+            </form>
+
+            <h2>Corredores</h2>
+            <ul id="scoreList"></ul>
+        </aside>
+    </div>
+
+    <!-- Biblioteca cliente do Socket.io servida automaticamente pelo Express -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+
+</html>
