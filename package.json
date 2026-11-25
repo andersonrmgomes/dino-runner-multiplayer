@@ -1,0 +1,13 @@
+{
+  "name": "game-multiplayer",
+  "version": "2.0.0",
+  "description": "Jogo 2D multiplayer estilo Dinossauro do Chrome em tempo real com Node.js e Socket.io",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
