@@ -371,24 +371,3 @@ canvas {
         max-width: 900px;
     }
 }
-
-
-.player-score {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #f5e0dc;
-    text-align: right;
-}
-
-@media (max-width: 1024px) {
-    .container {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .scoreboard {
-        width: 100%;
-        max-width: 900px;
-    }
-}
