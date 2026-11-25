@@ -14,6 +14,7 @@ const qrImage = document.getElementById('qrImage');
 const qrStatus = document.getElementById('qrStatus');
 const nameForm = document.getElementById('nameForm');
 const playerNameInput = document.getElementById('playerNameInput');
+const debugBtn = document.getElementById('debugBtn');
 const focusModeBtn = document.getElementById('focusModeBtn');
 const muteBtn = document.getElementById('muteBtn');
 const jumpBtn = document.getElementById('jumpBtn');
@@ -29,11 +30,15 @@ let config = {
     dinoWidth: 44,
     dinoHeight: 48,
     dinoDuckWidth: 58,
-    dinoDuckHeight: 28
+    dinoDuckHeight: 28,
+    hitboxPaddingX: 8,
+    hitboxPaddingY: 6,
+    obstaclePadding: 4
 };
 
 let currentState = {
     status: 'waiting',
+    countdown: 0,
     speed: 6.5,
     baseSpeed: 6.5,
     score: 0,
@@ -41,17 +46,27 @@ let currentState = {
     groundOffset: 0,
     isNight: false,
     tick: 0,
+    leaderId: null,
     lastWinner: null,
+    powerup: null,
     obstacles: [],
     players: {}
 };
 
-// Controle local de áudio retrô via Web Audio API
+// Controle local de áudio retrô via Web Audio API e modo debug
 let audioCtx = null;
 let isMuted = false;
 let hideOtherPlayers = false;
+let debugMode = false;
+let pingMs = null;
+let fps = 60;
+let fpsFrames = 0;
+let fpsLastTime = performance.now();
 let prevAlive = true;
 let prevJumping = false;
+let prevHasShield = false;
+let prevCountdown = 0;
+let prevStatus = 'waiting';
 let lastMilestone = 0;
 let flashUntil = 0;
 let isDuckPressed = false;
@@ -129,6 +144,20 @@ function playHitSound() {
     playTone(210, 75, 0.22, 'sawtooth', 0.07);
 }
 
+function playPowerupSound() {
+    playTone(523, 523, 0.06, 'triangle', 0.07);
+    setTimeout(() => playTone(659, 659, 0.06, 'triangle', 0.07), 60);
+    setTimeout(() => playTone(784, 1046, 0.14, 'triangle', 0.07), 120);
+}
+
+function playShieldBreakSound() {
+    playTone(620, 260, 0.16, 'square', 0.06);
+}
+
+function playCountdownSound(isGo = false) {
+    playTone(isGo ? 880 : 440, isGo ? 880 : 440, isGo ? 0.16 : 0.08, 'square', 0.05);
+}
+
 function formatScore(value) {
     return String(Math.max(0, Math.floor(value))).padStart(5, '0');
 }
@@ -144,17 +173,47 @@ function lerpColor(rgbA, rgbB, t) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-// Eventos de conexão
+// Eventos de conexão e medição de latência (ping)
+function updateConnectionPill() {
+    if (socket.connected) {
+        const pingText = pingMs !== null ? ` • ${pingMs} ms` : '';
+        connectionStatus.textContent = `Online${pingText}`;
+        connectionStatus.className = 'status-pill online';
+    } else {
+        connectionStatus.textContent = 'Desconectado';
+        connectionStatus.className = 'status-pill offline';
+    }
+}
+
 socket.on('connect', () => {
     myId = socket.id;
-    connectionStatus.textContent = 'Online';
-    connectionStatus.className = 'status-pill online';
+    updateConnectionPill();
+    socket.emit('pingCheck', performance.now());
 });
 
 socket.on('disconnect', () => {
-    connectionStatus.textContent = 'Desconectado';
-    connectionStatus.className = 'status-pill offline';
+    pingMs = null;
+    updateConnectionPill();
 });
+
+socket.on('pongCheck', (sentAt) => {
+    pingMs = Math.max(0, Math.round(performance.now() - sentAt));
+    updateConnectionPill();
+});
+
+setInterval(() => {
+    if (socket.connected) {
+        socket.emit('pingCheck', performance.now());
+    }
+}, 2000);
+
+function toggleDebugMode() {
+    debugMode = !debugMode;
+    debugBtn.classList.toggle('active', debugMode);
+    debugBtn.textContent = debugMode ? '🐞 Debug ON' : '🐞 Debug';
+}
+
+debugBtn.addEventListener('click', toggleDebugMode);
 
 function updateQrCode() {
     if (!localNetworkUrl || qrContainer.classList.contains('hidden')) return;
@@ -239,13 +298,30 @@ socket.on('init', (payload) => {
 socket.on('stateUpdate', (state) => {
     const me = myId ? state.players[myId] : null;
 
+    // Sons da contagem regressiva 3-2-1-VAI
+    if (state.status === 'countdown' && state.countdown !== prevCountdown) {
+        playCountdownSound(false);
+    } else if (state.status === 'running' && prevStatus === 'countdown') {
+        playCountdownSound(true);
+    }
+    prevCountdown = state.countdown || 0;
+    prevStatus = state.status;
+
     if (me) {
         // Som de pulo
         if (me.isJumping && !prevJumping && state.status === 'running') {
             playJumpSound();
         }
-        // Som de colisão
-        if (!me.alive && prevAlive && state.status !== 'waiting') {
+        // Som ao coletar escudo
+        if (me.hasShield && !prevHasShield && state.status === 'running') {
+            playPowerupSound();
+        }
+        // Som ao absorver impacto com escudo
+        if (!me.hasShield && prevHasShield && me.alive && state.status === 'running') {
+            playShieldBreakSound();
+        }
+        // Som de colisão fatal
+        if (!me.alive && prevAlive && state.status !== 'waiting' && state.status !== 'countdown') {
             playHitSound();
         }
         // Marco de 100 pontos
@@ -260,6 +336,7 @@ socket.on('stateUpdate', (state) => {
 
         prevAlive = me.alive;
         prevJumping = me.isJumping;
+        prevHasShield = Boolean(me.hasShield);
     }
 
     currentState = state;
@@ -293,6 +370,9 @@ document.addEventListener('keydown', (event) => {
     } else if ((event.key === 'r' || event.key === 'R') && currentState.status === 'gameover') {
         event.preventDefault();
         socket.emit('playerAction', { type: 'restart' });
+    } else if ((event.key === 'h' || event.key === 'H') && !event.repeat) {
+        event.preventDefault();
+        toggleDebugMode();
     }
 });
 
@@ -366,14 +446,17 @@ function updateScoreboard(players) {
         dot.style.backgroundColor = player.color;
 
         const nameText = document.createElement('span');
-        nameText.textContent = player.id === myId ? `${player.name} (Você)` : player.name;
+        const crownPrefix = player.id === currentState.leaderId ? '👑 ' : '';
+        const shieldSuffix = player.hasShield ? ' 🛡️' : '';
+        const meSuffix = player.id === myId ? ' (Você)' : '';
+        nameText.textContent = `${crownPrefix}${player.name}${meSuffix}${shieldSuffix}`;
 
         badge.appendChild(dot);
         badge.appendChild(nameText);
 
         const meta = document.createElement('span');
         meta.className = 'player-meta';
-        const statusLabel = currentState.status === 'waiting'
+        const statusLabel = currentState.status === 'waiting' || currentState.status === 'countdown'
             ? 'Pronto'
             : player.alive
                 ? 'Correndo'
@@ -495,7 +578,7 @@ function drawStandingDino(player, tick, outlineColor, eyeColor) {
     ctx.fillRect(x + 34, y + 26, 3, 5);
 
     // Pernas (alternam durante a corrida)
-    if (isJumping || !alive || currentState.status === 'waiting') {
+    if (isJumping || !alive || currentState.status === 'waiting' || currentState.status === 'countdown') {
         ctx.fillRect(x + 13, y + 38, 6, 10);
         ctx.fillRect(x + 13, y + 45, 9, 3);
         ctx.fillRect(x + 23, y + 38, 6, 10);
@@ -575,8 +658,111 @@ function drawDuckingDino(player, tick, outlineColor, eyeColor) {
     }
 }
 
+function drawCrown(centerX, bottomY) {
+    const x = Math.round(centerX - 8);
+    const y = Math.round(bottomY - 10);
+    // Base e pontas douradas em pixel art
+    ctx.fillStyle = '#f1c40f';
+    ctx.fillRect(x, y + 4, 16, 6);
+    ctx.fillRect(x, y + 1, 3, 4);
+    ctx.fillRect(x + 6, y, 4, 5);
+    ctx.fillRect(x + 13, y + 1, 3, 4);
+    // Detalhes de joias
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(x + 7, y + 6, 2, 2);
+    ctx.fillStyle = '#3498db';
+    ctx.fillRect(x + 2, y + 6, 2, 2);
+    ctx.fillRect(x + 12, y + 6, 2, 2);
+}
+
+function drawShieldAura(player, tick) {
+    const pulse = 2 + Math.sin(tick * 0.2) * 2;
+    ctx.save();
+    ctx.strokeStyle = '#74c7ec';
+    ctx.fillStyle = 'rgba(116, 199, 236, 0.16)';
+    ctx.lineWidth = 2;
+    const cx = player.x + player.width / 2;
+    const cy = player.y + player.height / 2;
+    const rx = player.width / 2 + 6 + pulse * 0.4;
+    const ry = player.height / 2 + 5 + pulse * 0.4;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawPowerup(powerup, tick) {
+    const bob = Math.round(Math.sin(tick * 0.14) * 4);
+    const x = powerup.x;
+    const y = powerup.y + bob;
+
+    ctx.save();
+    // Aura cintilante
+    ctx.fillStyle = 'rgba(249, 226, 175, 0.25)';
+    ctx.fillRect(x - 3, y - 3, powerup.width + 6, powerup.height + 6);
+
+    // Estrela dourada em pixel art
+    ctx.fillStyle = '#f1c40f';
+    ctx.fillRect(x + 10, y, 6, 26);
+    ctx.fillRect(x, y + 10, 26, 6);
+    ctx.fillRect(x + 5, y + 5, 16, 16);
+
+    // Centro claro brilhante
+    ctx.fillStyle = '#fff8dc';
+    ctx.fillRect(x + 9, y + 9, 8, 8);
+    ctx.restore();
+}
+
+function drawDebugHitboxes() {
+    const px = config.hitboxPaddingX ?? 8;
+    const py = config.hitboxPaddingY ?? 6;
+    const op = config.obstaclePadding ?? 4;
+    const isNight = nightBlend > 0.5;
+
+    ctx.save();
+    ctx.lineWidth = 2;
+
+    // Hitboxes dos obstáculos (vermelho)
+    ctx.strokeStyle = isNight ? '#f38ba8' : '#dc2626';
+    currentState.obstacles.forEach((obs) => {
+        ctx.strokeRect(
+            obs.x + op,
+            obs.y + op,
+            obs.width - op * 2,
+            obs.height - op * 2
+        );
+    });
+
+    // Hitbox do poder coletável (amarelo/dourado)
+    if (currentState.powerup) {
+        const pu = currentState.powerup;
+        ctx.strokeStyle = isNight ? '#f9e2af' : '#d97706';
+        ctx.strokeRect(
+            pu.x + op,
+            pu.y + op,
+            pu.width - op * 2,
+            pu.height - op * 2
+        );
+    }
+
+    // Hitboxes dos dinossauros visíveis (verde)
+    ctx.strokeStyle = isNight ? '#a6e3a1' : '#16a34a';
+    Object.values(currentState.players).forEach((player) => {
+        if (hideOtherPlayers && player.id !== myId) return;
+        ctx.strokeRect(
+            player.x + px,
+            player.y + py,
+            player.width - px * 2,
+            player.height - py * 2
+        );
+    });
+
+    ctx.restore();
+}
+
 function drawDino(player, isMe, tick, textColor, eyeColor) {
-    // Pisca quando está invulnerável (ao entrar em uma corrida em andamento)
+    // Pisca quando está invulnerável (ao entrar em uma corrida em andamento ou após escudo)
     if (player.invulnerable && Math.floor(tick / 4) % 2 === 0) {
         return;
     }
@@ -584,11 +770,22 @@ function drawDino(player, isMe, tick, textColor, eyeColor) {
     ctx.save();
     ctx.globalAlpha = isMe ? 1 : 0.52;
 
-    const indicatorColor = isMe ? textColor : null;
+    if (player.hasShield && player.alive) {
+        drawShieldAura(player, tick);
+    }
+
+    const isLeader = player.id === currentState.leaderId;
+    const indicatorColor = isMe && !isLeader ? textColor : null;
     if (player.isDucking && player.alive) {
         drawDuckingDino(player, tick, indicatorColor, eyeColor);
     } else {
         drawStandingDino(player, tick, indicatorColor, eyeColor);
+    }
+
+    // Coroa dourada sobre a cabeça do líder atual
+    if (isLeader) {
+        const headCenterX = player.isDucking ? player.x + 45 : player.x + 30;
+        drawCrown(headCenterX, player.y - 3);
     }
 
     // Rótulo com nome acima dos outros corredores
@@ -596,7 +793,8 @@ function drawDino(player, isMe, tick, textColor, eyeColor) {
         ctx.font = 'bold 11px "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillStyle = textColor;
-        ctx.fillText(player.name, player.x + player.width / 2, player.y - 8);
+        const labelOffset = isLeader ? 18 : 8;
+        ctx.fillText(player.name, player.x + player.width / 2, player.y - labelOffset);
     }
 
     ctx.restore();
@@ -624,11 +822,24 @@ function drawHUD(textColor, mutedColor) {
     const playersList = Object.values(currentState.players);
     const aliveCount = playersList.filter((p) => p.alive).length;
     const speedFactor = (currentState.speed / (currentState.baseSpeed || 6.5)).toFixed(1);
+    const shieldTag = me && me.hasShield ? '  •  🛡️ ESCUDO' : '';
 
     ctx.font = 'bold 13px "Courier New", Courier, monospace';
     ctx.textAlign = 'left';
     ctx.fillStyle = mutedColor;
-    ctx.fillText(`VEL ${speedFactor}x  •  VIVOS ${aliveCount}/${playersList.length}`, 20, 30);
+    ctx.fillText(`VEL ${speedFactor}x  •  VIVOS ${aliveCount}/${playersList.length}${shieldTag}`, 20, 30);
+
+    // Telemetria técnica no Modo Debug (AABB + Ping + FPS)
+    if (debugMode) {
+        const pingLabel = pingMs !== null ? `${pingMs}ms` : '--';
+        ctx.font = 'bold 12px "Courier New", Courier, monospace';
+        ctx.fillStyle = nightBlend > 0.5 ? '#a6e3a1' : '#15803d';
+        ctx.fillText(
+            `DEBUG [AABB]  PING: ${pingLabel}  •  FPS: ${fps}  •  OBST: ${currentState.obstacles.length}  •  TICK: ${currentState.tick}`,
+            20,
+            49
+        );
+    }
 }
 
 function drawOverlay(textColor, skyBg) {
@@ -643,7 +854,23 @@ function drawOverlay(textColor, skyBg) {
 
         ctx.font = '14px "Segoe UI", sans-serif';
         ctx.globalAlpha = 0.78;
-        ctx.fillText('Pule os cactos e abaixe-se para desviar dos pterodáctilos!', canvas.width / 2, 156);
+        ctx.fillText('Pule cactos, abaixe-se nos pterodáctilos e pegue estrelas ⭐ para ganhar escudo!', canvas.width / 2, 156);
+        ctx.restore();
+        return;
+    }
+
+    if (currentState.status === 'countdown') {
+        ctx.save();
+        ctx.fillStyle = currentState.isNight ? 'rgba(24, 24, 37, 0.7)' : 'rgba(247, 247, 247, 0.75)';
+        ctx.fillRect(canvas.width / 2 - 200, 74, 400, 110);
+
+        ctx.fillStyle = textColor;
+        ctx.font = 'bold 54px "Courier New", Courier, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(currentState.countdown || 1), canvas.width / 2, 138);
+
+        ctx.font = 'bold 14px "Segoe UI", sans-serif';
+        ctx.fillText('LARGADA SINCRONIZADA — PREPARE-SE!', canvas.width / 2, 168);
         ctx.restore();
         return;
     }
@@ -698,6 +925,15 @@ function drawOverlay(textColor, skyBg) {
 
 // Loop principal de renderização (60 FPS no navegador)
 function render() {
+    // Medição de FPS local para o Modo Debug
+    fpsFrames += 1;
+    const now = performance.now();
+    if (now - fpsLastTime >= 1000) {
+        fps = fpsFrames;
+        fpsFrames = 0;
+        fpsLastTime = now;
+    }
+
     // Interpolação suave do ciclo dia/noite
     const targetNight = currentState.isNight ? 1 : 0;
     nightBlend += (targetNight - nightBlend) * 0.04;
@@ -755,6 +991,11 @@ function render() {
         }
     });
 
+    // Poder coletável (Estrela de Escudo)
+    if (currentState.powerup) {
+        drawPowerup(currentState.powerup, currentState.tick);
+    }
+
     // Desenha outros jogadores primeiro (se o modo foco não estiver ativo) e o jogador local por cima
     if (!hideOtherPlayers) {
         const players = Object.values(currentState.players);
@@ -768,6 +1009,11 @@ function render() {
     const me = myId ? currentState.players[myId] : null;
     if (me) {
         drawDino(me, true, currentState.tick, fgColor, eyeColor);
+    }
+
+    // Caixas de colisão reais (Modo Debug - Tecla H)
+    if (debugMode) {
+        drawDebugHitboxes();
     }
 
     // HUD e mensagens de estado

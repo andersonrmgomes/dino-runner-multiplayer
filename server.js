@@ -84,11 +84,12 @@ const DINO_COLORS = [
 ];
 
 let nextObstacleId = 1;
+let nextPowerupId = 1;
 let colorIndex = 0;
 
 // Estado oficial do jogo (Fonte da Verdade no servidor)
 const gameState = {
-    status: 'waiting', // 'waiting' | 'running' | 'gameover'
+    status: 'waiting', // 'waiting' | 'countdown' | 'running' | 'gameover'
     speed: BASE_SPEED,
     distance: 0,
     score: 0,
@@ -96,9 +97,12 @@ const gameState = {
     groundOffset: 0,
     isNight: false,
     tick: 0,
+    countdownTicks: 0,
     lastWinner: null,
     restartAllowedAt: 0,
     nextObstacleGap: 300,
+    nextPowerupScore: 150,
+    powerup: null,
     obstacles: [],
     players: {}
 };
@@ -133,6 +137,8 @@ function createPlayer(socketId) {
         isJumping: false,
         isDucking: false,
         alive: !isGameOver,
+        hasShield: false,
+        bonusScore: 0,
         score: 0,
         bestScore: 0,
         wins: 0,
@@ -151,6 +157,8 @@ function resetPlayerForRound(player) {
     player.isJumping = false;
     player.isDucking = false;
     player.alive = true;
+    player.hasShield = false;
+    player.bonusScore = 0;
     player.score = 0;
     player.distance = 0;
     player.invulnerableTicks = 0;
@@ -164,26 +172,41 @@ function resetWorldToWaiting() {
     gameState.score = 0;
     gameState.groundOffset = 0;
     gameState.isNight = false;
+    gameState.countdownTicks = 0;
     gameState.lastWinner = null;
     gameState.obstacles = [];
+    gameState.powerup = null;
     gameState.nextObstacleGap = 300;
+    gameState.nextPowerupScore = 150;
 }
 
 function startNewRound(starterId = null) {
-    gameState.status = 'running';
+    const playerCount = Object.keys(gameState.players).length;
     gameState.speed = BASE_SPEED;
     gameState.distance = 0;
     gameState.score = 0;
     gameState.isNight = false;
     gameState.lastWinner = null;
     gameState.obstacles = [];
+    gameState.powerup = null;
     gameState.nextObstacleGap = 320;
+    gameState.nextPowerupScore = 150;
 
     for (const id in gameState.players) {
         resetPlayerForRound(gameState.players[id]);
     }
 
-    // Dá o pulo inicial característico para quem iniciou a corrida
+    // No modo multiplayer (2+ jogadores), faz contagem regressiva 3-2-1 para largada justa
+    if (playerCount >= 2) {
+        gameState.status = 'countdown';
+        gameState.countdownTicks = TICK_RATE * 3;
+        return;
+    }
+
+    gameState.status = 'running';
+    gameState.countdownTicks = 0;
+
+    // Dá o pulo inicial característico no modo solo
     if (starterId && gameState.players[starterId]) {
         triggerJump(gameState.players[starterId]);
     }
@@ -308,13 +331,24 @@ function finishRoundIfNoSurvivors() {
 function updateGame() {
     gameState.tick += 1;
 
-    if (gameState.status !== 'running') {
+    const players = Object.values(gameState.players);
+    if (players.length === 0) {
+        if (gameState.status !== 'waiting') {
+            resetWorldToWaiting();
+        }
         return;
     }
 
-    const players = Object.values(gameState.players);
-    if (players.length === 0) {
-        resetWorldToWaiting();
+    if (gameState.status === 'countdown') {
+        gameState.countdownTicks -= 1;
+        if (gameState.countdownTicks <= 0) {
+            gameState.countdownTicks = 0;
+            gameState.status = 'running';
+        }
+        return;
+    }
+
+    if (gameState.status !== 'running') {
         return;
     }
 
@@ -343,6 +377,24 @@ function updateGame() {
     const lastObstacle = gameState.obstacles[gameState.obstacles.length - 1];
     if (!lastObstacle || CANVAS_WIDTH - lastObstacle.x >= gameState.nextObstacleGap) {
         spawnObstacle();
+    }
+
+    // Spawna e movimenta o poder coletável (Estrela de Escudo +50 pts)
+    if (!gameState.powerup && gameState.score >= gameState.nextPowerupScore) {
+        gameState.powerup = {
+            id: nextPowerupId++,
+            type: 'shield_star',
+            x: CANVAS_WIDTH + 30,
+            y: GROUND_Y - 112,
+            width: 26,
+            height: 26
+        };
+        gameState.nextPowerupScore = gameState.score + 180 + Math.floor(Math.random() * 100);
+    } else if (gameState.powerup) {
+        gameState.powerup.x -= gameState.speed;
+        if (gameState.powerup.x + gameState.powerup.width < -20) {
+            gameState.powerup = null;
+        }
     }
 
     // Atualiza física e colisões de cada jogador vivo
@@ -387,9 +439,16 @@ function updateGame() {
             player.y = GROUND_Y - targetHeight;
         }
 
-        // Pontuação individual do jogador
+        // Coleta da Estrela de Escudo
+        if (gameState.powerup && checkCollision(player, gameState.powerup)) {
+            player.hasShield = true;
+            player.bonusScore += 50;
+            gameState.powerup = null;
+        }
+
+        // Pontuação individual do jogador (distância + bônus)
         player.distance += gameState.speed;
-        player.score = Math.floor(player.distance / 10);
+        player.score = Math.floor(player.distance / 10) + player.bonusScore;
 
         if (player.score > player.bestScore) {
             player.bestScore = player.score;
@@ -398,12 +457,17 @@ function updateGame() {
             gameState.highScore = player.score;
         }
 
-        // Verifica colisão com obstáculos
+        // Verifica colisão com obstáculos (escudo absorve 1 batida!)
         if (player.invulnerableTicks <= 0) {
             for (const obs of gameState.obstacles) {
                 if (checkCollision(player, obs)) {
-                    player.alive = false;
-                    player.isDucking = false;
+                    if (player.hasShield) {
+                        player.hasShield = false;
+                        player.invulnerableTicks = Math.round(TICK_RATE * 1.2);
+                    } else {
+                        player.alive = false;
+                        player.isDucking = false;
+                    }
                     break;
                 }
             }
@@ -411,6 +475,19 @@ function updateGame() {
     }
 
     finishRoundIfNoSurvivors();
+}
+
+function getLeaderId() {
+    const players = Object.values(gameState.players);
+    if (players.length === 0) return null;
+
+    if (gameState.status === 'waiting') {
+        const sortedWins = [...players].sort((a, b) => b.wins - a.wins || b.bestScore - a.bestScore);
+        return sortedWins[0].wins > 0 || sortedWins[0].bestScore > 0 ? sortedWins[0].id : null;
+    }
+
+    const sortedScore = [...players].sort((a, b) => b.score - a.score || b.wins - a.wins);
+    return sortedScore[0].score > 0 ? sortedScore[0].id : null;
 }
 
 function getPublicState() {
@@ -428,6 +505,7 @@ function getPublicState() {
             isJumping: p.isJumping,
             isDucking: p.isDucking,
             alive: p.alive,
+            hasShield: p.hasShield,
             score: p.score,
             bestScore: p.bestScore,
             wins: p.wins,
@@ -437,6 +515,7 @@ function getPublicState() {
 
     return {
         status: gameState.status,
+        countdown: gameState.status === 'countdown' ? Math.max(1, Math.ceil(gameState.countdownTicks / TICK_RATE)) : 0,
         speed: Number(gameState.speed.toFixed(2)),
         baseSpeed: BASE_SPEED,
         score: gameState.score,
@@ -444,7 +523,18 @@ function getPublicState() {
         groundOffset: Math.floor(gameState.groundOffset),
         isNight: gameState.isNight,
         tick: gameState.tick,
+        leaderId: getLeaderId(),
         lastWinner: gameState.lastWinner,
+        powerup: gameState.powerup
+            ? {
+                id: gameState.powerup.id,
+                type: gameState.powerup.type,
+                x: Math.round(gameState.powerup.x),
+                y: Math.round(gameState.powerup.y),
+                width: gameState.powerup.width,
+                height: gameState.powerup.height
+            }
+            : null,
         obstacles: gameState.obstacles.map((o) => ({
             id: o.id,
             type: o.type,
@@ -464,10 +554,10 @@ function broadcastState() {
 
 // Loop principal do servidor (60 FPS)
 setInterval(() => {
-    const wasRunning = gameState.status === 'running';
+    const wasActive = gameState.status === 'running' || gameState.status === 'countdown';
     updateGame();
 
-    if (wasRunning || gameState.status === 'running') {
+    if (wasActive || gameState.status === 'running' || gameState.status === 'countdown') {
         broadcastState();
     }
 }, 1000 / TICK_RATE);
@@ -492,11 +582,19 @@ io.on('connection', (socket) => {
             dinoWidth: DINO_WIDTH,
             dinoHeight: DINO_HEIGHT,
             dinoDuckWidth: DINO_DUCK_WIDTH,
-            dinoDuckHeight: DINO_DUCK_HEIGHT
+            dinoDuckHeight: DINO_DUCK_HEIGHT,
+            hitboxPaddingX: HITBOX_PADDING_X,
+            hitboxPaddingY: HITBOX_PADDING_Y,
+            obstaclePadding: OBSTACLE_PADDING
         }
     });
 
     broadcastState();
+
+    // Medição de latência (ping) em tempo real para fins didáticos
+    socket.on('pingCheck', (clientTimestamp) => {
+        socket.emit('pongCheck', clientTimestamp);
+    });
 
     socket.on('setName', (data) => {
         const player = gameState.players[socket.id];
@@ -523,6 +621,9 @@ io.on('connection', (socket) => {
         }
 
         if (type === 'jump') {
+            if (gameState.status === 'countdown') {
+                return;
+            }
             if (gameState.status === 'waiting') {
                 startNewRound(socket.id);
                 broadcastState();

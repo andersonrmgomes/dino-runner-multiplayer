@@ -25,7 +25,8 @@ dino-runner-multiplayer/
 ├── server.js            # Servidor Node.js + Express + Socket.io (física, obstáculos e estado do jogo)
 ├── package.json         # Dependências e scripts do projeto (npm start)
 ├── .gitignore           # Arquivos ignorados pelo Git (ex.: node_modules)
-├── README.md            # Esta documentação
+├── README.md            # Documentação didática para alunos
+├── AULA.md              # Roteiro de aula e dicas/gabarito para o professor
 └── public/              # Arquivos estáticos enviados ao navegador
     ├── index.html       # Estrutura da página (Canvas, controles, IP local e placar)
     ├── style.css        # Estilização e responsividade da interface
@@ -138,6 +139,12 @@ Servidor Dino Multiplayer rodando em:
 | **Iniciar / Pular / Reiniciar** | `Espaço`, `↑` ou `W` | Clique/toque no Canvas ou botão **⬆ Pular** |
 | **Abaixar** (ou queda rápida no ar) | `↓` ou `S` | Segurar botão **⬇ Abaixar** |
 | **Reiniciar após Game Over** | `Espaço`, `↑`, `W` ou `R` | Clique/toque no Canvas |
+| **Modo Debug (Hitboxes AABB + Ping/FPS)** | `H` | Botão **🐞 Debug** no topo |
+
+### ✨ Mecânicas Extras Multiplayer
+- **Largada sincronizada (`3... 2... 1...`):** com 2 ou mais jogadores na sala, a corrida inicia com contagem regressiva para todos largarem juntos.
+- **Coroa do líder 👑:** o jogador em 1º lugar recebe uma coroa dourada desenhada sobre o dinossauro e destaque no placar.
+- **Estrela de Escudo ⭐🛡️:** aparece no céu durante a corrida; o primeiro jogador a pular e coletar ganha **+50 pontos** e um **escudo** que protege contra 1 batida!
 
 ---
 
