@@ -190,6 +190,55 @@ canvas {
     color: #f9e2af;
 }
 
+.network-box {
+    background-color: #11111b;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.network-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#localIpValue {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 1.05rem;
+    color: #89b4fa;
+}
+
+.network-port {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85rem;
+    color: #a6e3a1;
+}
+
+.network-url {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.78rem;
+    color: #a6adc8;
+    word-break: break-all;
+}
+
+.copy-btn {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.copy-btn:hover {
+    background-color: #45475a;
+}
+
 .name-form {
     display: flex;
     flex-direction: column;

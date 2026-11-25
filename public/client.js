@@ -4,6 +4,13 @@ const ctx = canvas.getContext('2d');
 
 const scoreList = document.getElementById('scoreList');
 const highScoreValue = document.getElementById('highScoreValue');
+const localIpValue = document.getElementById('localIpValue');
+const localPortValue = document.getElementById('localPortValue');
+const localUrlValue = document.getElementById('localUrlValue');
+const copyUrlBtn = document.getElementById('copyUrlBtn');
+const localIpValue = document.getElementById('localIpValue');
+const localUrlValue = document.getElementById('localUrlValue');
+const copyUrlBtn = document.getElementById('copyUrlBtn');
 const nameForm = document.getElementById('nameForm');
 const playerNameInput = document.getElementById('playerNameInput');
 const muteBtn = document.getElementById('muteBtn');
@@ -12,6 +19,7 @@ const duckBtn = document.getElementById('duckBtn');
 const connectionStatus = document.getElementById('connectionStatus');
 
 let myId = null;
+let localNetworkUrl = '';
 let config = {
     width: 900,
     height: 300,
@@ -145,8 +153,87 @@ socket.on('disconnect', () => {
     connectionStatus.className = 'status-pill offline';
 });
 
+function updateNetworkInfo(network) {
+    if (!network || !network.ip) return;
+    const port = network.port || 3000;
+    localIpValue.textContent = `${network.ip}:${port}`;
+    localPortValue.textContent = `Porta: ${port}`;
+    localNetworkUrl = network.url || `http://${network.ip}:${port}`;
+    localUrlValue.textContent = localNetworkUrl;
+}
+
+fetch('/api/network')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => updateNetworkInfo(data))
+    .catch(() => {});
+
+copyUrlBtn.addEventListener('click', () => {
+    const textToCopy = localNetworkUrl || localIpValue.textContent;
+    if (!textToCopy || textToCopy === 'Detectando...') return;
+
+    const showCopied = () => {
+        copyUrlBtn.textContent = 'Copiado!';
+        setTimeout(() => {
+            copyUrlBtn.textContent = 'Copiar';
+        }, 1500);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(showCopied).catch(() => {});
+    } else {
+        const tempInput = document.createElement('textarea');
+        tempInput.value = textToCopy;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showCopied();
+    }
+});
+
+function updateNetworkInfo(network) {
+    if (!network || !network.ip) return;
+    const port = network.port || 3000;
+    localIpValue.textContent = `${network.ip}:${port}`;
+    localPortValue.textContent = `Porta: ${port}`;
+    localNetworkUrl = network.url || `http://${network.ip}:${port}`;
+    localUrlValue.textContent = localNetworkUrl;
+}
+
+fetch('/api/network')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => updateNetworkInfo(data))
+    .catch(() => {});
+
+copyUrlBtn.addEventListener('click', () => {
+    const textToCopy = localNetworkUrl || localIpValue.textContent;
+    if (!textToCopy || textToCopy === 'Detectando...') return;
+
+    const showCopied = () => {
+        copyUrlBtn.textContent = 'Copiado!';
+        setTimeout(() => {
+            copyUrlBtn.textContent = 'Copiar';
+        }, 1500);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(showCopied).catch(() => {});
+    } else {
+        const tempInput = document.createElement('textarea');
+        tempInput.value = textToCopy;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showCopied();
+    }
+});
+
 socket.on('init', (payload) => {
     myId = payload.id;
+    if (payload.network) {
+        updateNetworkInfo(payload.network);
+    }
     if (payload.config) {
         config = payload.config;
         canvas.width = config.width;
