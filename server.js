@@ -1,13 +1,51 @@
 const express = require('express');
 const http = require('http');
+const os = require('os');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+const PORT = process.env.PORT || 3000;
+
+function getLocalIpAddress() {
+    const interfaces = os.networkInterfaces();
+    const candidates = [];
+
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name] || []) {
+            const isIpv4 = iface.family === 'IPv4' || iface.family === 4;
+            if (isIpv4 && !iface.internal) {
+                candidates.push({ name, address: iface.address });
+            }
+        }
+    }
+
+    if (candidates.length === 0) {
+        return '127.0.0.1';
+    }
+
+    const preferred = candidates.find(
+        (c) =>
+            !/vethernet|virtual|vmware|vbox|wsl|docker|hyper-v/i.test(c.name) &&
+            /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(c.address)
+    );
+    return (preferred || candidates[0]).address;
+}
+
 // Serve os arquivos estáticos da pasta public
 app.use(express.static('public'));
+
+// Retorna o IP local do servidor para exibição na página
+app.get('/api/network', (req, res) => {
+    const ip = getLocalIpAddress();
+    res.json({
+        ip,
+        port: PORT,
+        url: `http://${ip}:${PORT}`
+    });
+});
 
 // Configurações da pista e física (60 ticks/segundo)
 const TICK_RATE = 60;
@@ -439,8 +477,14 @@ io.on('connection', (socket) => {
 
     gameState.players[socket.id] = createPlayer(socket.id);
 
+    const localIp = getLocalIpAddress();
     socket.emit('init', {
         id: socket.id,
+        network: {
+            ip: localIp,
+            port: PORT,
+            url: `http://${localIp}:${PORT}`
+        },
         config: {
             width: CANVAS_WIDTH,
             height: CANVAS_HEIGHT,
@@ -515,7 +559,9 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Servidor Dino Multiplayer rodando na porta ${PORT}`);
+    const localIp = getLocalIpAddress();
+    console.log(`Servidor Dino Multiplayer rodando em:`);
+    console.log(`  Local: http://localhost:${PORT}`);
+    console.log(`  Rede:  http://${localIp}:${PORT}`);
 });
